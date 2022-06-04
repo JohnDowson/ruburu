@@ -1,0 +1,2 @@
+DROP DATABASE ruburu;
+CREATE DATABASE ruburu OWNER ruburu;

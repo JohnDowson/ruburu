@@ -1,3 +1,5 @@
+#![feature(iter_intersperse)]
+
 mod errors;
 mod fairings;
 mod models;
@@ -23,6 +25,8 @@ async fn main() -> Result<(), Error> {
             ],
         )
         .mount("/static", FileServer::from("./static"))
+        .mount("/thumbs", FileServer::from("./thumbs"))
+        .mount("/images", FileServer::from("./images"))
         .launch()
         .await?;
 

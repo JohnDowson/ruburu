@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS posts (
     author VARCHAR(255),
     email VARCHAR(255),
     sage BOOLEAN NOT NULL,
-    content VARCHAR(65535),
+    plaintext_content VARCHAR(65535),
+    html_content VARCHAR(65535) NOT NULL,
     thread INTEGER NOT NULL,
     FOREIGN KEY (thread, board) REFERENCES posts(id, board),
     posted_at TIMESTAMP NOT NULL DEFAULT NOW()

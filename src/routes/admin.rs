@@ -29,8 +29,11 @@ pub async fn index(pool: &State<PgPool>) -> Result<Markup, Error> {
 }
 
 #[post("/admin/submit", data = "<form>")]
-pub async fn create_board(form: Form<BoardForm>, pool: &State<PgPool>) -> Result<Redirect, Error> {
+pub async fn create_board(
+    form: Form<BoardForm<'_>>,
+    pool: &State<PgPool>,
+) -> Result<Redirect, Error> {
     let form = form.into_inner();
-    let board = Board::create(form.name, form.title, &*pool).await?;
-    Ok(Redirect::to(uri!(public::board(board.name()))))
+    Board::create(form.name.as_ref(), form.title.as_ref(), &*pool).await?;
+    Ok(Redirect::to(uri!(public::board(form.name.as_ref()))))
 }

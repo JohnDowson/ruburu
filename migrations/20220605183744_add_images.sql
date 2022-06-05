@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS images (
+    hash UUID PRIMARY KEY NOT NULL
+);
+
+ALTER TABLE IF EXISTS posts
+    ADD COLUMN IF NOT EXISTS
+        image UUID REFERENCES images(hash);

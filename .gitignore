@@ -1,2 +1,5 @@
 /target
 .env
+images/*
+thumbs/*
+static/*.css

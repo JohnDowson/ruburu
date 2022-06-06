@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS captchas (
+    id UUID PRIMARY KEY NOT NULL,
+    solution VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

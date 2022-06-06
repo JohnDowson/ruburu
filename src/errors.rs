@@ -25,6 +25,8 @@ pub enum Error {
     Banned(String),
     #[error("You must supply an image when creating a thread")]
     MissingImage,
+    #[error("You're supposed to have a captcha cookie to do that")]
+    MissingOrInvalidCaptchaID,
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
@@ -38,6 +40,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
             Error::Io(_) => Status::InternalServerError,
             Error::Banned(_) => Status::Ok,
             Error::MissingImage => Status::UnprocessableEntity,
+            Error::MissingOrInvalidCaptchaID => Status::UnprocessableEntity,
         };
         let f = format!("{self}");
         Response::build()

@@ -1,6 +1,7 @@
 use image::ImageEncoder;
 use maud::{html, PreEscaped};
 use once_cell::sync::Lazy;
+use rand::prelude::StdRng;
 use regex::{Captures, Regex};
 use rocket::{
     async_trait,
@@ -12,7 +13,7 @@ use rocket::{
 };
 use sqlx::{
     query, query_as,
-    types::{ipnetwork::IpNetwork, time::PrimitiveDateTime, Uuid},
+    types::{ipnetwork::IpNetwork, time::PrimitiveDateTime, uuid::Uuid},
     PgPool,
 };
 use std::ops::Deref;
@@ -502,6 +503,13 @@ pub struct PostForm<'r> {
     pub thread: Option<i32>,
     pub board: NonEmptyStr<'r>,
     pub image: Option<Bytes>,
+    pub captcha: Option<NonEmptyStr<'r>>,
+}
+
+impl<'r> PostForm<'r> {
+    pub fn captcha(&self) -> Option<&str> {
+        self.captcha.as_deref()
+    }
 }
 
 #[derive(FromForm, Debug)]
@@ -579,5 +587,81 @@ impl<'r> FromRequest<'r> for NotBanned {
         } else {
             request::Outcome::Success(Self)
         }
+    }
+}
+
+pub struct Captcha {
+    id: Uuid,
+    base64image: String,
+    solution: String,
+}
+
+impl Captcha {
+    pub async fn new(pool: &PgPool) -> Result<Self, Error> {
+        let (id, base64image, solution) = {
+            let mut captcha = captcha::RngCaptcha::<StdRng>::new();
+            captcha.add_chars(6);
+
+            let mut geom = captcha.text_area();
+            geom.left -= 10;
+            geom.right += 10;
+            geom.top -= 10;
+            geom.bottom += 10;
+            let captcha = captcha.extract(geom);
+            captcha
+                .apply_filter(captcha::filters::Wave::new(10.0, 2.0).horizontal())
+                .apply_filter(captcha::filters::Grid::new(8, 8))
+                .apply_filter(captcha::filters::Wave::new(10.0, 2.0).vertical());
+
+            (
+                Uuid::from_bytes(*uuid::Uuid::new_v4().as_bytes()),
+                captcha.as_base64().unwrap(),
+                captcha.chars_as_string().to_lowercase(),
+            )
+        };
+
+        query!(
+            "INSERT INTO captchas(id, base64image, solution) VALUES ($1, $2, $3)",
+            id,
+            base64image,
+            solution
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(Self {
+            id,
+            base64image,
+            solution,
+        })
+    }
+
+    pub async fn verify(id: Uuid, answer: &str, pool: &PgPool) -> Result<bool, Error> {
+        let captcha = query!(
+            "DELETE FROM captchas
+            WHERE id = $1
+            RETURNING solution",
+            id
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some(captcha) = captcha {
+            Ok(captcha.solution == answer.to_lowercase())
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn base64image(&self) -> &str {
+        self.base64image.as_ref()
+    }
+
+    pub fn solution(&self) -> &str {
+        self.solution.as_ref()
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
     }
 }

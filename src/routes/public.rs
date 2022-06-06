@@ -1,11 +1,14 @@
 use std::net::IpAddr;
+use std::str::FromStr;
 
 use crate::errors::Error;
-use crate::models::{Board, Image, NotBanned, Post, PostForm};
+use crate::models::{Board, Captcha, Image, NotBanned, Post, PostForm};
 use maud::{html, Markup};
 use rocket::form::Form;
+use rocket::http::{Cookie, CookieJar};
 use rocket::response::Redirect;
 use rocket::{get, post, uri, State};
+use sqlx::types::Uuid;
 use sqlx::PgPool;
 
 #[get("/")]
@@ -30,7 +33,18 @@ pub async fn create_post(
     pool: &State<PgPool>,
     ip: IpAddr,
     _not_banned: NotBanned,
+    cookies: &CookieJar<'_>,
 ) -> Result<Redirect, Error> {
+    let captcha_id: Uuid = cookies
+        .get("captcha_id")
+        .map(|c| c.value())
+        .ok_or(Error::MissingOrInvalidCaptchaID)?
+        .parse()
+        .map_err(|_| Error::MissingOrInvalidCaptchaID)?;
+    if !Captcha::verify(captcha_id, form.captcha().unwrap(), &*pool).await? {
+        return Err(Error::MissingOrInvalidCaptchaID);
+    };
+
     let image = if let Some(file) = &form.image {
         Some(Image::from_buf(&*file, &*pool).await?)
     } else {
@@ -75,14 +89,20 @@ pub async fn create_post(
 }
 
 #[get("/<board>")]
-pub async fn board(board: &str, pool: &State<PgPool>) -> Result<Markup, Error> {
+pub async fn board(
+    board: &str,
+    pool: &State<PgPool>,
+    cookies: &CookieJar<'_>,
+) -> Result<Markup, Error> {
     let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
+    let captcha = Captcha::new(&*pool).await?;
+    cookies.add(Cookie::new("captcha_id", captcha.id().to_string()));
     Ok(html! {
         (head())
         body {
             h1 { (board.name()) }
             h2 { (board.title()) }
-            (post_form(board.name(), None))
+            (post_form(board.name(), None,Some(captcha.base64image())))
             @for head in Post::threads_for_board(board.name(), &*pool).await? {
                 (post_body(&head, &*pool).await?)
             }
@@ -92,15 +112,22 @@ pub async fn board(board: &str, pool: &State<PgPool>) -> Result<Markup, Error> {
 }
 
 #[get("/<board>/<thread>")]
-pub async fn thread(board: &str, thread: i32, pool: &State<PgPool>) -> Result<Markup, Error> {
+pub async fn thread(
+    board: &str,
+    thread: i32,
+    pool: &State<PgPool>,
+    cookies: &CookieJar<'_>,
+) -> Result<Markup, Error> {
     let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
     let posts = Post::for_thread(board.name(), thread, &*pool).await?;
+    let captcha = Captcha::new(&*pool).await?;
+    cookies.add(Cookie::new("captcha_id", captcha.id().to_string()));
     Ok(html! {
         (head())
         body {
             h1 { (board.name()) }
             h2 { (board.title()) }
-            (post_form(board.name(), Some(thread)))
+            (post_form(board.name(), Some(thread),  Some(captcha.base64image())))
             .thread {
                 @for post in posts {
                     (post_body(&post, &*pool).await?)
@@ -178,7 +205,7 @@ async fn post_body(post: &Post, pool: &PgPool) -> Result<Markup, Error> {
     })
 }
 
-fn post_form(board: &str, thread: Option<i32>) -> Markup {
+fn post_form(board: &str, thread: Option<i32>, captcha: Option<&str>) -> Markup {
     html! {
         .post-form {
             form id="post" action=(uri!(create_post).to_string()) method="post" enctype="multipart/form-data" {
@@ -210,6 +237,26 @@ fn post_form(board: &str, thread: Option<i32>) -> Markup {
                         tr {
                             td { label for="content" { "Content" } }
                             td { textarea name="content" form="post" {} }
+                        }
+
+                        @if let Some(captcha) = captcha {
+                            tr {
+                                td { label for="captcha" { "Captcha" } }
+                                td {
+                                    img src=(format!("data:image/png;base64, {}",  captcha));
+                                }
+                            }
+                            tr {
+                                td {}
+                                td { input type="text" name="captcha"; }
+                            }
+                        } @else {
+                            tr {
+                                td {}
+                                td {
+                                    span { "You are free to roam this earth" }
+                                }
+                            }
                         }
                     }
                     input type="hidden" name="board" value=(board);

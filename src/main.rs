@@ -13,6 +13,9 @@ async fn main() -> Result<(), Error> {
     dotenv::dotenv()?;
     let _rocket = rocket::build()
         .attach(fairings::DbManager)
+        .mount("/static", FileServer::from("./static"))
+        .mount("/thumbs", FileServer::from("./thumbs"))
+        .mount("/images", FileServer::from("./images"))
         .mount(
             "/",
             routes![
@@ -24,9 +27,6 @@ async fn main() -> Result<(), Error> {
                 admin::create_board
             ],
         )
-        .mount("/static", FileServer::from("./static"))
-        .mount("/thumbs", FileServer::from("./thumbs"))
-        .mount("/images", FileServer::from("./images"))
         .launch()
         .await?;
 

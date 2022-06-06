@@ -266,13 +266,11 @@ impl Post {
     ) -> Result<(String, Vec<i32>), sqlx::Error> {
         if let Some(body) = body {
             let body = html! {
-                .post-content {
-                    @for line in body.lines() {
-                        @if line.starts_with('>') && line.chars().nth(1) != Some('>') {
-                            .green-text { (line) }
-                        } @else { (line) }
-                        br;
-                    }
+                @for line in body.lines() {
+                    @if line.starts_with('>') && line.chars().nth(1) != Some('>') {
+                        .green-text { (line) }
+                    } @else { (line) }
+                    br;
                 }
             }
             .0;
@@ -465,7 +463,7 @@ impl Image {
             file.write_all(buf).await?;
 
             let image = image::load_from_memory(buf)?;
-            let image = image.resize(400, 400, image::imageops::FilterType::Lanczos3);
+            let image = image.resize(200, 200, image::imageops::FilterType::Lanczos3);
             let mut buf = Vec::new();
             let encoder = image::codecs::png::PngEncoder::new(&mut buf);
             encoder.write_image(
@@ -503,7 +501,7 @@ pub struct PostForm<'r> {
     pub content: Option<NonEmptyStr<'r>>,
     pub thread: Option<i32>,
     pub board: NonEmptyStr<'r>,
-    pub image: Bytes,
+    pub image: Option<Bytes>,
 }
 
 #[derive(FromForm, Debug)]
@@ -527,11 +525,16 @@ impl Deref for Bytes {
 impl<'v> FromFormField<'v> for Bytes {
     async fn from_data(field: rocket::form::DataField<'v, '_>) -> rocket::form::Result<'v, Self> {
         let stream = field.data.open(10.mebibytes());
-        stream
+        let buf = stream
             .into_bytes()
             .await
-            .map(|v| Self(v.into_inner()))
-            .map_err(|e| rocket::form::Error::custom(e).into())
+            .map(|v| v.into_inner())
+            .map_err(|e| rocket::form::Errors::from(rocket::form::Error::custom(e)))?;
+        if buf.is_empty() {
+            Err(rocket::form::Error::validation("Empty files are not allowed").into())
+        } else {
+            Ok(Self(buf))
+        }
     }
 
     fn from_value(field: rocket::form::ValueField<'v>) -> rocket::form::Result<'v, Self> {

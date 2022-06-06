@@ -11,9 +11,7 @@ use sqlx::PgPool;
 #[get("/")]
 pub async fn index(pool: &State<PgPool>) -> Result<Markup, Error> {
     Ok(html! {
-        head {
-            link rel="stylesheet" href="/static/style.css";
-        }
+        (head())
         body {
             h1 { "Hello, ruburu!" }
             div {
@@ -22,6 +20,7 @@ pub async fn index(pool: &State<PgPool>) -> Result<Markup, Error> {
                 }
             }
         }
+        (footer())
     })
 }
 
@@ -32,7 +31,7 @@ pub async fn create_post(
     ip: IpAddr,
     _not_banned: NotBanned,
 ) -> Result<Redirect, Error> {
-    let image = if let Some(file) = Some(&form.image) {
+    let image = if let Some(file) = &form.image {
         Some(Image::from_buf(&*file, &*pool).await?)
     } else {
         None
@@ -79,9 +78,7 @@ pub async fn create_post(
 pub async fn board(board: &str, pool: &State<PgPool>) -> Result<Markup, Error> {
     let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
     Ok(html! {
-        head {
-            link rel="stylesheet" href="/static/style.css";
-        }
+        (head())
         body {
             h1 { (board.name()) }
             h2 { (board.title()) }
@@ -90,6 +87,7 @@ pub async fn board(board: &str, pool: &State<PgPool>) -> Result<Markup, Error> {
                 (post_body(&head, &*pool).await?)
             }
         }
+        (footer())
     })
 }
 
@@ -98,9 +96,7 @@ pub async fn thread(board: &str, thread: i32, pool: &State<PgPool>) -> Result<Ma
     let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
     let posts = Post::for_thread(board.name(), thread, &*pool).await?;
     Ok(html! {
-        head {
-            link rel="stylesheet" href="/static/style.css";
-        }
+        (head())
         body {
             h1 { (board.name()) }
             h2 { (board.title()) }
@@ -111,7 +107,25 @@ pub async fn thread(board: &str, thread: i32, pool: &State<PgPool>) -> Result<Ma
                 }
             }
         }
+        (footer())
     })
+}
+
+fn head() -> Markup {
+    html! {
+        head {
+            link rel="stylesheet" href="/static/style.css";
+            script src="/static/script.js" {}
+        }
+    }
+}
+
+fn footer() -> Markup {
+    html! {
+        footer {
+            script { "ready();" }
+        }
+    }
 }
 
 async fn post_body(post: &Post, pool: &PgPool) -> Result<Markup, Error> {
@@ -134,15 +148,20 @@ async fn post_body(post: &Post, pool: &PgPool) -> Result<Markup, Error> {
                     a href=(format!("{}#{}", uri!(thread(post.board(), post.thread())), post.id())) { (">>") }
                     a href="" { (post.id()) }
                 }
-                .timestamp { (post.posted_at().format("%Y-%m-%d %H:%M:%S")) }
+                .timestamp {
+                    @let time = post.posted_at().assume_utc();
+                    time datetime=(time.to_string()) { (time.format("%Y-%m-%d %H:%M:%S")) }
+                }
             }
             .content {
                 @if let Some(img) = post.image() {
-                    a href=(format!("/images/{}", img)) {
-                        img src=(format!("/thumbs/{}.png", img));
+                    .image {
+                        a href=(format!("/images/{}", img)) {
+                            img src=(format!("/thumbs/{}.png", img));
+                        }
                     }
-                };
-                (post.html_content())
+                }
+                .text { (post.html_content()) }
             }
             .replies {
                 @for reply in post.replies(pool)

@@ -49,6 +49,18 @@ body {
         }
     }
 
+    .content {
+        .image {
+            margin-right: 8px;
+            display: inline-block;
+        }
+
+        .text {
+            vertical-align: top;
+            display: inline-block;
+        }
+    }
+
     .replies {
         font-size: 0.8em;
     }

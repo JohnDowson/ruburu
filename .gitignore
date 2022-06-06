@@ -3,3 +3,4 @@
 images/*
 thumbs/*
 static/*.css
+!**/.keep

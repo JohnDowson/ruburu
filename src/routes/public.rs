@@ -1,6 +1,3 @@
-use std::net::IpAddr;
-use std::str::FromStr;
-
 use crate::errors::Error;
 use crate::models::{Board, Captcha, Image, NotBanned, Post, PostForm};
 use maud::{html, Markup};
@@ -10,6 +7,7 @@ use rocket::response::Redirect;
 use rocket::{get, post, uri, State};
 use sqlx::types::Uuid;
 use sqlx::PgPool;
+use std::net::IpAddr;
 
 #[get("/")]
 pub async fn index(pool: &State<PgPool>) -> Result<Markup, Error> {
@@ -88,7 +86,7 @@ pub async fn create_post(
     Ok(Redirect::to(uri!(thread(&*form.board, id))))
 }
 
-#[get("/<board>")]
+#[get("/<board>", rank = 3)]
 pub async fn board(
     board: &str,
     pool: &State<PgPool>,
@@ -111,7 +109,7 @@ pub async fn board(
     })
 }
 
-#[get("/<board>/<thread>")]
+#[get("/<board>/<thread>", rank = 3)]
 pub async fn thread(
     board: &str,
     thread: i32,
@@ -173,7 +171,7 @@ async fn post_body(post: &Post, pool: &PgPool) -> Result<Markup, Error> {
                 }
                 .id {
                     a href=(format!("{}#{}", uri!(thread(post.board(), post.thread())), post.id())) { (">>") }
-                    a href="" { (post.id()) }
+                    a href="#" onclick=(format!("reply_to({}); event.preventDefault();", post.id())) { (post.id()) }
                 }
                 .timestamp {
                     @let time = post.posted_at().assume_utc();

@@ -24,6 +24,8 @@ async fn main() -> Result<(), Error> {
                 public::thread,
                 public::create_post,
                 admin::index,
+                admin::login_page,
+                admin::login,
                 admin::create_board
             ],
         )

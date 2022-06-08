@@ -16,3 +16,8 @@ function ready() {
         t.textContent = format.format(dt);
     })
 }
+
+function reply_to(id) {
+    const textarea = document.querySelector('#post > table > tbody > tr:nth-child(6) > td:nth-child(2) > textarea');
+    textarea.value += ' >>' + id;
+}

@@ -14,7 +14,7 @@ use rocket::{
 use sqlx::{
     query, query_as,
     types::{ipnetwork::IpNetwork, time::PrimitiveDateTime, uuid::Uuid},
-    PgPool,
+    PgPool, Postgres,
 };
 use std::ops::Deref;
 use tokio::io::AsyncWriteExt;
@@ -546,7 +546,6 @@ impl<'v> FromFormField<'v> for Bytes {
     }
 
     fn from_value(field: rocket::form::ValueField<'v>) -> rocket::form::Result<'v, Self> {
-        println!("{:#?}", field);
         Ok(Self(field.value.as_bytes().to_owned()))
     }
 
@@ -565,7 +564,6 @@ impl<'r> FromRequest<'r> for NotBanned {
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let pool = request.rocket().state::<PgPool>().unwrap();
         let ip: IpNetwork = request.client_ip().unwrap().into();
-        println!("|>\tIP:  {:?}", ip);
         let ban = match query!(
             "SELECT reason
             FROM bans
@@ -621,9 +619,8 @@ impl Captcha {
         };
 
         query!(
-            "INSERT INTO captchas(id, base64image, solution) VALUES ($1, $2, $3)",
+            "INSERT INTO captchas(id, solution) VALUES ($1, $2)",
             id,
-            base64image,
             solution
         )
         .execute(pool)
@@ -664,4 +661,102 @@ impl Captcha {
     pub fn id(&self) -> Uuid {
         self.id
     }
+}
+
+#[derive(sqlx::Type)]
+#[sqlx(type_name = "privelege_level")]
+#[sqlx(rename_all = "lowercase")]
+pub enum PrivelegeLevel {
+    Admin,
+    Mod,
+}
+
+pub struct User {
+    id: Uuid,
+    name: String,
+    level: PrivelegeLevel,
+}
+
+impl User {
+    pub async fn new(name: &str, level: PrivelegeLevel, pool: &PgPool) -> Result<Self, Error> {
+        let id = Uuid::from_bytes(uuid::Uuid::new_v4().into_bytes());
+        let user = query_as!(
+            User,
+            r#"INSERT INTO users(id, name, level)
+            VALUES ($1, $2, $3)
+            RETURNING id, name, level AS "level!: PrivelegeLevel""#,
+            id,
+            name,
+            level as PrivelegeLevel
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(user)
+    }
+}
+
+pub struct Session {
+    id: Uuid,
+    uid: Uuid,
+    logged_in_at: PrimitiveDateTime,
+}
+
+impl Session {
+    pub async fn get(id: Uuid, pool: &PgPool) -> Result<Option<Self>, Error> {
+        let session = query_as!(Session, "SELECT * FROM sessions WHERE id = $1", id)
+            .fetch_optional(pool)
+            .await?;
+        Ok(session)
+    }
+
+    pub async fn new(name: &str, password: &str, pool: &PgPool) -> Result<Self, Error> {
+        let id = Uuid::from_bytes(uuid::Uuid::new_v4().into_bytes());
+        let uid: Uuid = todo!();
+        let session = query_as!(
+            Session,
+            "INSERT INTO sessions (id, uid) VALUES ($1, $2) RETURNING *",
+            id,
+            uid
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(session)
+    }
+
+    pub fn uid(&self) -> Uuid {
+        self.uid
+    }
+}
+
+pub struct AdminPrivilege {
+    uid: Uuid,
+}
+
+impl AdminPrivilege {
+    pub fn uid(&self) -> Uuid {
+        self.uid
+    }
+}
+
+#[async_trait]
+impl<'r> FromRequest<'r> for AdminPrivilege {
+    type Error = Error;
+
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let pool = request.rocket().state::<PgPool>().unwrap();
+        let session = request.cookies().get_private("sessionid");
+        let session = session.map(|c| c.value().parse());
+        if let Some(Ok(session)) = session {
+            if let Ok(Some(session)) = Session::get(session, pool).await {
+                return request::Outcome::Success(Self { uid: session.uid() });
+            }
+        }
+        request::Outcome::Forward(())
+    }
+}
+
+#[derive(FromForm)]
+pub struct LoginForm<'r> {
+    name: NonEmptyStr<'r>,
+    password: NonEmptyStr<'r>,
 }

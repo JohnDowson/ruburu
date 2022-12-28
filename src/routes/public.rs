@@ -16,7 +16,7 @@ pub async fn index(pool: &State<PgPool>) -> Result<Markup, Error> {
         body {
             h1 { "Hello, ruburu!" }
             div {
-                @for board in Board::get_all(&*pool).await? {
+                @for board in Board::get_all(pool).await? {
                     div { a href=(uri!(board(board.name())).to_string()) { (board.name()) } }
                 }
             }
@@ -39,12 +39,12 @@ pub async fn create_post(
         .ok_or(Error::MissingOrInvalidCaptchaID)?
         .parse()
         .map_err(|_| Error::MissingOrInvalidCaptchaID)?;
-    if !Captcha::verify(captcha_id, form.captcha().unwrap(), &*pool).await? {
+    if !Captcha::verify(captcha_id, form.captcha().unwrap(), pool).await? {
         return Err(Error::MissingOrInvalidCaptchaID);
     };
 
     let image = if let Some(file) = &form.image {
-        Some(Image::from_buf(&*file, &*pool).await?)
+        Some(Image::from_buf(file, pool).await?)
     } else {
         None
     };
@@ -59,7 +59,7 @@ pub async fn create_post(
             form.content.as_deref(),
             ip.into(),
             image,
-            &*pool,
+            pool,
         )
         .await?;
         thread
@@ -79,7 +79,7 @@ pub async fn create_post(
                     return Err(Error::MissingImage);
                 }
             },
-            &*pool,
+            pool,
         )
         .await?
     };
@@ -92,8 +92,8 @@ pub async fn board(
     pool: &State<PgPool>,
     cookies: &CookieJar<'_>,
 ) -> Result<Markup, Error> {
-    let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
-    let captcha = Captcha::new(&*pool).await?;
+    let board = Board::get(board, pool).await?.ok_or(Error::NotFound)?;
+    let captcha = Captcha::new(pool).await?;
     cookies.add(Cookie::new("captcha_id", captcha.id().to_string()));
     Ok(html! {
         (head())
@@ -101,8 +101,8 @@ pub async fn board(
             h1 { (board.name()) }
             h2 { (board.title()) }
             (post_form(board.name(), None,Some(captcha.base64image())))
-            @for head in Post::threads_for_board(board.name(), &*pool).await? {
-                (post_body(&head, &*pool).await?)
+            @for head in Post::threads_for_board(board.name(), pool).await? {
+                (post_body(&head, pool).await?)
             }
         }
         (footer())
@@ -116,9 +116,9 @@ pub async fn thread(
     pool: &State<PgPool>,
     cookies: &CookieJar<'_>,
 ) -> Result<Markup, Error> {
-    let board = Board::get(board, &*pool).await?.ok_or(Error::NotFound)?;
-    let posts = Post::for_thread(board.name(), thread, &*pool).await?;
-    let captcha = Captcha::new(&*pool).await?;
+    let board = Board::get(board, pool).await?.ok_or(Error::NotFound)?;
+    let posts = Post::for_thread(board.name(), thread, pool).await?;
+    let captcha = Captcha::new(pool).await?;
     cookies.add(Cookie::new("captcha_id", captcha.id().to_string()));
     Ok(html! {
         (head())
@@ -128,7 +128,7 @@ pub async fn thread(
             (post_form(board.name(), Some(thread),  Some(captcha.base64image())))
             .thread {
                 @for post in posts {
-                    (post_body(&post, &*pool).await?)
+                    (post_body(&post, pool).await?)
                 }
             }
         }
@@ -181,8 +181,8 @@ async fn post_body(post: &Post, pool: &PgPool) -> Result<Markup, Error> {
             .content {
                 @if let Some(img) = post.image() {
                     .image {
-                        a href=(format!("/images/{}", img)) {
-                            img src=(format!("/thumbs/{}.png", img));
+                        a href=(format!("/images/{img}")) {
+                            img src=(format!("/thumbs/{img}.png"));
                         }
                     }
                 }
@@ -241,7 +241,7 @@ fn post_form(board: &str, thread: Option<i32>, captcha: Option<&str>) -> Markup 
                             tr {
                                 td { label for="captcha" { "Captcha" } }
                                 td {
-                                    img src=(format!("data:image/png;base64, {}",  captcha));
+                                    img src=(format!("data:image/png;base64, {captcha}"));
                                 }
                             }
                             tr {

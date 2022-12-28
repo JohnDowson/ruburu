@@ -41,8 +41,8 @@ pub async fn login_page(pool: &State<PgPool>) -> Result<Markup, Error> {
 }
 #[post("/admin/login", data = "<form>")]
 pub async fn login(
-    form: Form<LoginForm<'_>>,
     pool: &State<PgPool>,
+    form: Form<LoginForm<'_>>,
     _privilege: AdminPrivilege,
 ) -> Result<Redirect, Error> {
     Ok(Redirect::to(uri!(index)))
@@ -50,11 +50,11 @@ pub async fn login(
 
 #[post("/admin/submit", data = "<form>")]
 pub async fn create_board(
-    form: Form<BoardForm<'_>>,
     pool: &State<PgPool>,
+    form: Form<BoardForm<'_>>,
     _privilege: AdminPrivilege,
 ) -> Result<Redirect, Error> {
     let form = form.into_inner();
-    Board::create(form.name.as_ref(), form.title.as_ref(), &*pool).await?;
+    Board::create(form.name.as_ref(), form.title.as_ref(), pool).await?;
     Ok(Redirect::to(uri!(public::board(form.name.as_ref()))))
 }

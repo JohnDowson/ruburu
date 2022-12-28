@@ -14,7 +14,7 @@ use rocket::{
 use sqlx::{
     query, query_as,
     types::{ipnetwork::IpNetwork, time::PrimitiveDateTime, uuid::Uuid},
-    PgPool, Postgres,
+    PgPool,
 };
 use std::ops::Deref;
 use tokio::io::AsyncWriteExt;
@@ -276,8 +276,8 @@ impl Post {
             }
             .0;
 
-            let body = BOLD_RE.replace_all(&*body, |c: &Captures| format!(r"<b>{}</b>", &c[2]));
-            let body = ITALIC_RE.replace_all(&*body, |c: &Captures| format!(r"<em>{}</em>", &c[2]));
+            let body = BOLD_RE.replace_all(&body, |c: &Captures| format!(r"<b>{}</b>", &c[2]));
+            let body = ITALIC_RE.replace_all(&body, |c: &Captures| format!(r"<em>{}</em>", &c[2]));
             let replied: Vec<i32> = REPLY_RE
                 .captures_iter(&*body)
                 .map(|c| c[1].parse().unwrap())
@@ -460,7 +460,7 @@ impl Image {
         if maybe {
             Ok(Image { hash })
         } else {
-            let mut file = tokio::fs::File::create(format!("./images/{}", hash)).await?;
+            let mut file = tokio::fs::File::create(format!("./images/{hash}")).await?;
             file.write_all(buf).await?;
 
             let image = image::load_from_memory(buf)?;
@@ -474,7 +474,7 @@ impl Image {
                 image.color(),
             )?;
 
-            let mut file = tokio::fs::File::create(format!("./thumbs/{}.png", hash)).await?;
+            let mut file = tokio::fs::File::create(format!("./thumbs/{hash}.png")).await?;
             file.write_all(&buf).await?;
 
             query!("INSERT INTO images VALUES ($1)", hash)
@@ -711,7 +711,7 @@ impl Session {
 
     pub async fn new(name: &str, password: &str, pool: &PgPool) -> Result<Self, Error> {
         let id = Uuid::from_bytes(uuid::Uuid::new_v4().into_bytes());
-        let uid: Uuid = todo!();
+        let uid: Uuid = Uuid::from_bytes(uuid::Uuid::new_v4().into_bytes());
         let session = query_as!(
             Session,
             "INSERT INTO sessions (id, uid) VALUES ($1, $2) RETURNING *",
